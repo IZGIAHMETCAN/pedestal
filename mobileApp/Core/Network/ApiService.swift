@@ -7,10 +7,26 @@ final class ApiService {
     // Backend test sunucusu
     private let baseURL = "http://31.141.228.115:44350"
     
+    // MARK: - Simulation Mode
+    // Server kapalıyken test yapabilmek için true yapın
+    var isSimulationMode = true
+    
+    // Simülasyon Durumları (State)
+    struct SimulatedState {
+        var suAcik: Bool = false
+        var elektrikAcik: Bool = false
+        var suTuketim: Double = 1200.0 // Başlangıç L
+        var elektrikTuketim: Double = 5000.0 // Başlangıç W
+        var bakiye: Double = 100.0
+    }
+    
+    var simulatedStates: [Int: SimulatedState] = [:] // PedestalID -> State
+    
     // Token artık Keychain'de güvenli olarak saklanıyor
     private var token: String? {
         get {
-            KeychainHelper.shared.getToken()
+            if isSimulationMode { return "fake_token_123" }
+            return KeychainHelper.shared.getToken()
         }
         set {
             if let newValue = newValue {
@@ -25,6 +41,21 @@ final class ApiService {
     
     /// Login with email and password
     func login(email: String, password: String) async throws -> TokenResponse {
+        
+        if isSimulationMode {
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 sn bekle
+            let fakeToken = "fake_simulation_token_12345"
+            
+            return TokenResponse(
+                token: fakeToken,
+                email: email,
+                userFullName: "Test Kullanıcı (Simülasyon)",
+                userId: 1,
+                webApiUrl: nil,
+                userProfileImageUrl: nil
+            )
+        }
+        
         let url = URL(string: "\(baseURL)/api/Token/Authenticate")!
         
         var request = URLRequest(url: url)
@@ -35,7 +66,6 @@ final class ApiService {
         request.httpBody = try JSONEncoder.apiEncoder.encode(body)
         
         let (data, response) = try await URLSession.shared.data(for: request)
-        
         
         if let responseString = String(data: data, encoding: .utf8) {
             print("Login Response: \(responseString)")
@@ -66,7 +96,7 @@ final class ApiService {
             return tokenResponse
         } catch {
             print("JSON Decode Hatası: \(error)")
-            print("Response Data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            print(" Response Data: \(String(data: data, encoding: .utf8) ?? "nil")")
             throw APIError.decodingError(error)
         }
     }
@@ -151,6 +181,23 @@ final class ApiService {
     
     /// Get user's active pedestals
     func getKullanilanPedestal() async throws -> [PedestalResponse] {
+        if isSimulationMode {
+             // Fake Pedestal döndür
+             let fakePedestal = PedestalResponse(
+                 recId: 1,
+                 marinaNo: 1,
+                 portAdi: "Sanal Port",
+                 istasyonAdi: "Simüle Pedestal 01",
+                 istasyonId: 1,
+                 prizNo: 1,
+                 aciklama: "Test İstasyonu",
+                 aktif: true,
+                 silTarih: nil,
+                 silKim: nil
+             )
+             return [fakePedestal]
+        }
+        
         let data = try await authorizedRequest(
             endpoint: "api/Customer/GetKullanilanPedestal",
             method: "GET"
@@ -173,6 +220,47 @@ final class ApiService {
     
     /// Get station last record info
     func getIstasyonSonKayit(istasyonId: Int) async throws -> IstasyonBilgiResponse {
+        if isSimulationMode {
+            // Eğer bu istasyon için state yoksa oluştur
+            if simulatedStates[istasyonId] == nil {
+                simulatedStates[istasyonId] = SimulatedState()
+            }
+            
+            // State'i güncelle (eğer açık ise tüketimi artır)
+            var state = simulatedStates[istasyonId]!
+            
+            if state.suAcik {
+                state.suTuketim += Double.random(in: 0.5...2.0)
+                state.bakiye -= 0.1
+            }
+            
+            if state.elektrikAcik {
+                state.elektrikTuketim += Double.random(in: 10...50)
+                state.bakiye -= 0.2
+            }
+            
+            // Güncellenmiş state'i kaydet
+            simulatedStates[istasyonId] = state
+            
+            // Response oluştur
+            return IstasyonBilgiResponse(
+                recId: 0,
+                tarih: ISO8601DateFormatter().string(from: Date()),
+                marinaNo: 1,
+                istasyonId: istasyonId,
+                aboneNo: nil,
+                kartId: nil,
+                bakiye: state.bakiye,
+                bakiyeKart: nil,
+                su: state.suAcik,
+                elektrik: state.elektrikAcik,
+                elektrikTuketim: state.elektrikTuketim,
+                litreTuketim: state.suTuketim,
+                kapali: false,
+                yil: 2026
+            )
+        }
+        
         
         let bodyData = "\(istasyonId)".data(using: .utf8)!
         
@@ -196,17 +284,14 @@ final class ApiService {
             body: bodyData
         )
         
-        // Dönen cevap: Düz string "Tamam" (JSON değil)
         let responseString = String(data: data, encoding: .utf8)?.replacingOccurrences(of: "\"", with: "")
         
         if responseString != "Tamam" {
-            // Belki JSON dönmüştür, bir de öyle deneyelim (Fallback)
             if let response = try? JSONDecoder.apiDecoder.decode(MesajResponse.self, from: data) {
                 if response.mesajGelen != "Tamam" {
                     throw APIError.serverError(response.mesajGelen ?? "Bilinmeyen hata")
                 }
             } else {
-                // Ne JSON ne de "Tamam" stringi
                 throw APIError.serverError(responseString ?? "Sunucu hatası")
             }
         }
@@ -214,6 +299,25 @@ final class ApiService {
     
     /// Control water/electricity (open/close)
     func postElektrikSuKontrol(request: ElektrikSuKontrolRequest) async throws {
+        if isSimulationMode {
+             // State güncelle
+             if simulatedStates[request.istasyonId] == nil {
+                 simulatedStates[request.istasyonId] = SimulatedState()
+             }
+             
+             var state = simulatedStates[request.istasyonId]!
+             
+             if request.suElektrik { // Su
+                 state.suAcik = (request.islem == 1)
+             } else { // Elektrik
+                 state.elektrikAcik = (request.islem == 1)
+             }
+             
+             simulatedStates[request.istasyonId] = state
+             print("Simülasyon: Su/Elektrik durumu güncellendi -> Su: \(state.suAcik), Elk: \(state.elektrikAcik)")
+             return
+        }
+
         let bodyData = try JSONEncoder.apiEncoder.encode(request)
         
         let data = try await authorizedRequest(
@@ -278,7 +382,7 @@ final class ApiService {
         
         let data = try await authorizedRequest(
             endpoint: "api/Customer/GetKullaniciTuketimler",
-            method: "GET",  // Backend POST bekliyor
+            method: "GET",
             body: bodyData
         )
         

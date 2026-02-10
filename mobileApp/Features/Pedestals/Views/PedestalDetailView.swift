@@ -17,7 +17,6 @@ struct PedestalDetailView: View {
     @State private var showWaterConfirmation = false // Su açma/kapama onayı
     @State private var showElectricityConfirmation = false // Elektrik açma/kapama onayı
     
-
     init(pedestal: Pedestal) {
         self.pedestal = pedestal
         self._usageViewModel = ObservedObject(wrappedValue: GlobalUsageManager.shared.getViewModel(for: pedestal))
@@ -42,7 +41,8 @@ struct PedestalDetailView: View {
                     
                     // Bakiye kartı
                     balanceCard
-                    
+
+                    // Su Kontrolü
                     serviceControlCard(
                         title: "Su",
                         icon: "drop.fill",
@@ -91,12 +91,26 @@ struct PedestalDetailView: View {
                 .padding(.top, 20)
             }
             .refreshable {
-            
+
+                print("Pedestal detay sayfası yenileniyor...")
                 await usageViewModel.refreshPedestalData()
             }
             .task {
-                
+
+                print("Pedestal detay sayfası açıldı veriler çekiliyor")
                 await usageViewModel.refreshPedestalData()
+            }
+            .task(id: usageViewModel.isWaterActive) {
+                // Su durumu değişince izlemeyi tetikle
+                if usageViewModel.isWaterActive {
+                    await usageViewModel.monitorUsage()
+                }
+            }
+            .task(id: usageViewModel.isElectricityActive) {
+                // Elektrik durumu değişince izlemeyi tetikle
+                if usageViewModel.isElectricityActive {
+                    await usageViewModel.monitorUsage()
+                }
             }
 
         .navigationTitle(pedestal.pedestalNumber)
@@ -107,7 +121,6 @@ struct PedestalDetailView: View {
             BalanceView().environmentObject(authViewModel)
         }
         .navigationDestination(isPresented: $navigateToHistory) {
-            // DEĞİŞİKLİK: pedestalId parametresi kullan
             UsageHistoryView(pedestalId: pedestal.id)
         }
         .toolbar {
@@ -278,7 +291,7 @@ struct PedestalDetailView: View {
             }
             
             HStack(spacing: 12) {
-
+                // Pedestal'dan ana hesaba iade
                 Button(action: { showRefundConfirmation = true }) {
                     HStack {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
@@ -535,7 +548,6 @@ struct PedestalDetailView: View {
                 await MainActor.run {
                     // Ana hesaptan düş
                     authViewModel.currentUser?.balance -= amount
-                    // Pedestal bakiyesini güncelle (refreshPedestalData içinde yapılıyor)
                     
                     isTransferring = false
                     showTransferSheet = false
@@ -552,7 +564,7 @@ struct PedestalDetailView: View {
     
     // MARK: - Refund Function
     private func refundPedestalBalance() {
- 
+        print("Mevcut pedestal bakiyesi: \(pedestal.balance)")
         
         guard usageViewModel.pedestal.balance > 0 else {
             print("Pedestal bakiyesi 0, iade edilemez")
@@ -563,25 +575,23 @@ struct PedestalDetailView: View {
         
         Task {
             do {
-                
                 let oldBalance = usageViewModel.pedestal.balance
                 
-                // API'ye iade isteği gönder
                 try await usageViewModel.refundBalance()
-                
-                
                 
                 await MainActor.run {
                     // Ana hesaba pedestal bakiyesini ekle
                     let currentUserBalance = authViewModel.currentUser?.balance ?? 0
                     authViewModel.currentUser?.balance = currentUserBalance + oldBalance
                     
+                    print("Ana hesap güncellendi: \(currentUserBalance) → \(authViewModel.currentUser?.balance ?? 0)")
+                    print("Pedestal verileri yenileniyor...")
                     
                     // İşlem bitti, loading kapat
                     isLoadingRefund = false
                 }
             } catch {
-                print(" Bakiye iadesi başarısız: \(error)")
+                print("Bakiye iadesi başarısız: \(error)")
                 print("Hata detayı: \(error.localizedDescription)")
                 
                 await MainActor.run {

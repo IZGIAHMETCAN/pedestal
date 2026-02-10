@@ -51,6 +51,9 @@ class PedestalUsageViewModel: ObservableObject {
         }
     }
     
+    private var startWaterMeterValue: Double?
+    private var startElectricityMeterValue: Double?
+    
     private func startWater() {
         let currentBalance = pedestal.balance
         guard currentBalance >= 1.0 else {
@@ -62,6 +65,7 @@ class PedestalUsageViewModel: ObservableObject {
         
         Task {
             do {
+                
                 let request = ElektrikSuKontrolRequest(
                     istasyonId: pedestal.id,
                     kartId: pedestal.kartId ?? "",
@@ -71,20 +75,22 @@ class PedestalUsageViewModel: ObservableObject {
                 
                 try await apiService.postElektrikSuKontrol(request: request)
                 
+                await self.refreshPedestalData()
+                
                 await MainActor.run {
                     self.isWaterActive = true
                     self.isLoading = false
                     self.waterStartTime = Date()
+                    // Başlangıç sayacını kaydet
+                    self.startWaterMeterValue = self.currentWaterUsage
+                    print("Su Başlangıç Sayacı: \(self.currentWaterUsage)")
                 }
                 
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 await self.refreshPedestalData()
-                await MainActor.run { self.startPolling() }
+                await self.refreshPedestalData()
             } catch {
-                await MainActor.run {
-                    self.errorMessage = "Su açma başarısız: \(error.localizedDescription)"
-                    self.isLoading = false
-                }
+                
             }
         }
     }
@@ -97,32 +103,44 @@ class PedestalUsageViewModel: ObservableObject {
                 let request = ElektrikSuKontrolRequest(
                     istasyonId: pedestal.id,
                     kartId: pedestal.kartId ?? "",
-                    suElektrik: true,
-                    islem: 0
+                    suElektrik: true, // Su
+                    islem: 0 // Kapat
                 )
                 
                 try await apiService.postElektrikSuKontrol(request: request)
                 
-                await MainActor.run {
-                    self.isWaterActive = false
-                    self.isLoading = false
-                    // Elektrik de kapalıysa polling durdur
-                    if !self.isElectricityActive {
-                        self.stopPolling()
-                    }
-                }
-                
+                // Kapattıktan sonra son veriyi çek
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 await self.refreshPedestalData()
                 
-            } catch {
                 await MainActor.run {
-                    self.errorMessage = "Su kapatma başarısız: \(error.localizedDescription)"
+                    self.isWaterActive = false
                     self.isLoading = false
+                    
+                    // Tüketim Hesapla ve Kaydet
+                    if let startVal = self.startWaterMeterValue {
+                        let endVal = self.currentWaterUsage
+                        let consumption = max(0, endVal - startVal) // Negatif olmasın
+                        
+                        let cost = consumption * (self.pedestal.waterRate > 0 ? self.pedestal.waterRate : 10.0) / 1000.0
+                        
+                        print("Su Tüketimi Hesaplandı: \(endVal) - \(startVal) = \(consumption) L")
+                        
+                        self.saveUsageToHistory(type: .water, consumption: consumption, cost: cost)
+                    }
+                    
+                    self.startWaterMeterValue = nil // Sıfırla
+                    
+                    if !self.isElectricityActive {
+                        // self.stopPolling() -> View lifecycle otomatik yönetecek
+                    }
                 }
+            } catch {
+                
             }
         }
     }
+
 
     
     // MARK: - Electricity Control
@@ -155,16 +173,19 @@ class PedestalUsageViewModel: ObservableObject {
                 
                 try await apiService.postElektrikSuKontrol(request: request)
                 
+                await self.refreshPedestalData()
+                
                 await MainActor.run {
                     self.isElectricityActive = true
                     self.electricityStartTime = Date()
                     self.isLoading = false
+                    self.startElectricityMeterValue = self.currentElectricityUsage
+                    print("Elektrik Başlangıç Sayacı: \(self.currentElectricityUsage)")
                 }
                 
-                // Elektrik açıldıktan sonra veriyi çek ve polling başlat
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 await self.refreshPedestalData()
-                await MainActor.run { self.startPolling() }
+                await self.refreshPedestalData()
             } catch {
                 await MainActor.run {
                     self.errorMessage = "Elektrik açma başarısız: \(error.localizedDescription)"
@@ -188,17 +209,33 @@ class PedestalUsageViewModel: ObservableObject {
                 
                 try await apiService.postElektrikSuKontrol(request: request)
                 
+                // Kapattıktan sonra son veriyi çek
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                await self.refreshPedestalData()
+                
                 await MainActor.run {
                     self.isElectricityActive = false
                     self.isLoading = false
-                    // Su da kapalıysa polling durdur
+                    
+                    // Tüketim Hesapla ve Kaydet
+                    if let startVal = self.startElectricityMeterValue {
+                        let endVal = self.currentElectricityUsage
+                        let consumption = max(0, endVal - startVal)
+                        
+                        let cost = consumption * (self.pedestal.electricityRate > 0 ? self.pedestal.electricityRate : 5.0)
+                        
+                        print("Elektrik Tüketimi Hesaplandı: \(endVal) - \(startVal) = \(consumption) Watt")
+                        
+                        self.saveUsageToHistory(type: .electricity, consumption: consumption, cost: cost)
+                    }
+                    
+                    self.startElectricityMeterValue = nil
+                    
+                    
                     if !self.isWaterActive {
-                        self.stopPolling()
+                        
                     }
                 }
-                
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                await self.refreshPedestalData()
                 
             } catch {
                 await MainActor.run {
@@ -222,7 +259,7 @@ class PedestalUsageViewModel: ObservableObject {
         
         try await apiService.postBakiyeIstasyon(request: request)
         
-        // Bakiye yüklendikten sonra pedestal bilgilerini güncelle
+        // pedestal bilgilerini güncelle
         await refreshPedestalData()
     }
     
@@ -243,13 +280,12 @@ class PedestalUsageViewModel: ObservableObject {
         await MainActor.run { self.isRefreshing = true }
         
         do {
-            
-            print("Adım 1: GetKullanilanPedestal tetikleniyor...")
             _ = try? await apiService.getKullanilanPedestal()
             
-            try await Task.sleep(nanoseconds: 5_000_000_000) // 5 saniye
+            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 saniye
             
             let istasyonBilgi = try await apiService.getIstasyonSonKayit(istasyonId: pedestal.id)
+            
             
             await MainActor.run {
                 
@@ -286,7 +322,7 @@ class PedestalUsageViewModel: ObservableObject {
             
         } catch {
             print("Pedestal verileri yenileme hatası: \(error)")
-            print(" Detay: \(error.localizedDescription)")
+            print("Detay: \(error.localizedDescription)")
             await MainActor.run { self.isRefreshing = false }
         }
     }
@@ -305,33 +341,55 @@ class PedestalUsageViewModel: ObservableObject {
         UsageHistoryManager.shared.addUsage(newUsage)
     }
     
-    // MARK: - Polling (Periyodik Güncelleme)
     
-    /// Su veya elektrik açıkken 10 saniyede bir backend'den güncel veriyi çeker
-    func startPolling() {
-        guard pollingTask == nil else { return }
-        
-        pollingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(nanoseconds: 10_000_000_000) // 5 saniye
-                } catch {
-                    break // Task iptal edildi
+    
+    // MARK: - Async Monitoring
+    
+    // Su veya elektrik aktif olduğu sürece 5 saniyede bir sinyal üreten akış
+    private var usageStream: AsyncStream<Void> {
+        AsyncStream { continuation in
+            let task = Task {
+                while !Task.isCancelled {
+                    // 5 saniye bekle
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    
+                    // Eğer aktif işlem yoksa döngüden çık akışı bitir
+                    if !self.isWaterActive && !self.isElectricityActive {
+                        continuation.finish()
+                        break
+                    }
+                    
+                    // Sinyal gönder
+                    continuation.yield()
                 }
-                guard !Task.isCancelled else { break }
-                await self?.refreshPedestalData()
+            }
+            
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
     
-    func stopPolling() {
-        print("Polling durduruldu")
-        pollingTask?.cancel()
-        pollingTask = nil
+    // Akışı dinler ve veri günceller
+    func monitorUsage() async {
+        // Eğer zaten aktif değilse başlatma
+        guard isWaterActive || isElectricityActive else { return }
+        
+        print(" AsyncStream izleme başladı 5 saniye aralıkla")
+        
+        for await _ in usageStream {
+            // Güvenlik kontrolü: Her ikisi de kapalıysa çık
+            if !isWaterActive && !isElectricityActive {
+                print("AsyncStream izleme durduruldu aktif servis yok")
+                break
+            }
+            
+            await refreshPedestalData()
+        }
     }
     
     func stopAllServices() {
-        stopPolling()
+        // stopPolling() -> Artık yok
         if isWaterActive {
             stopWater()
         }
@@ -341,7 +399,7 @@ class PedestalUsageViewModel: ObservableObject {
     }
     
     deinit {
-        stopPolling()
+        // stopPolling() -> Artık yok
         stopAllServices()
     }
 }
