@@ -5,11 +5,28 @@ final class ApiService {
     private init() {}
     
     // Backend test sunucusu
-    private let baseURL = "http://31.141.228.115:44350"
+    private var baseURL: String {
+            get {
+                UserDefaults.standard.string(forKey: "api_base_url") ?? "http://31.141.228.115:44350"
+            }
+        }
+        
+        /// Update Base URL
+        func updateBaseURL(_ url: String) {
+            // Sonunda slash varsa kaldır
+            let cleanURL = url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            UserDefaults.standard.set(cleanURL, forKey: "api_base_url")
+            print("🌍 Base URL değiştirildi: \(cleanURL)")
+        }
+        
+        /// Reset Base URL to default
+        func resetBaseURL() {
+            UserDefaults.standard.removeObject(forKey: "api_base_url")
+            print("🌍 Base URL varsayılan ayarlara döndürüldü.")
+        }
     
     // MARK: - Simulation Mode
-    // Server kapalıyken test yapabilmek için true yapın
-    var isSimulationMode = true
+    var isSimulationMode = false
     
     // Simülasyon Durumları (State)
     struct SimulatedState {

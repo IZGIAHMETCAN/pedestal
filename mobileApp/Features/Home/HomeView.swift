@@ -47,8 +47,19 @@ struct HomeView: View {
                     await authViewModel.refreshBalance()
                 }
                 .task {
-                    // Sayfa açıldığında otomatik yenile
-                    await authViewModel.refreshBalance()
+                    // Auth state'in yüklenmesini bekle (Race condition önlemi)
+                                        var retryCount = 0
+                                        while !authViewModel.isAuthenticated && retryCount < 10 {
+                                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2sn
+                                            retryCount += 1
+                                        }
+                                        
+                                        print("🏠 HomeView: Başlangıç güncelleniyor... (Auth: \(authViewModel.isAuthenticated))")
+                                        
+                                        if authViewModel.isAuthenticated {
+                                            await authViewModel.refreshBalance()
+                                            await GlobalUsageManager.shared.syncActiveUsages()
+                                        }
                 }
                 
                 
@@ -102,30 +113,30 @@ struct HomeView: View {
     
     // MARK: - Aktif Kullanım Kontrolü
     private var hasActiveUsage: Bool {
-        !globalUsageManager.activeViewModels.isEmpty
-    }
+            !globalUsageManager.activeViewModels.values.filter { $0.pedestal.balance > 0 }.isEmpty
+        }
     
     // MARK: - Aktif Kullanımlar Bölümü
     private var activeUsageSection: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
-                Image(systemName: "bolt.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(.cyan)
-                Text("Aktif Kullanımlar")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-            }
-            .padding(.bottom, 5)
-            
-            VStack(spacing: 12) {
-                ForEach(Array(globalUsageManager.activeViewModels.values), id: \.pedestal.id) { viewModel in
-                    ActiveUsageCard(viewModel: viewModel) {
-                        selectedPedestalId = viewModel.pedestal.id
-                    }
-                }
-            }
+                            Image(systemName: "bolt.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.cyan)
+                            Text("Aktif Kullanımlar")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.bottom, 5)
+                        
+                        VStack(spacing: 12) {
+                            ForEach(Array(globalUsageManager.activeViewModels.values.filter { $0.pedestal.balance > 0 }), id: \.pedestal.id) { viewModel in
+                                ActiveUsageCard(viewModel: viewModel) {
+                                    selectedPedestalId = viewModel.pedestal.id
+                                }
+                            }
+                        }
         }
         .padding(20)
         .background(
@@ -223,21 +234,7 @@ struct HomeView: View {
             .background(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.6), Color.blue.opacity(0.4)]), startPoint: .topLeading, endPoint: .bottomTrailing))
             .cornerRadius(30).padding(.horizontal, 25)
             
-            // DEBUG TEST BUTTON
-            Button(action: {
-                self.selectedPedestalId = 8
-            }) {
-                HStack {
-                    Image(systemName: "ladybug.fill")
-                    Text("TEST ISTASYON 8")
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding()
-                .background(Color.red.opacity(0.8))
-                .cornerRadius(15)
             }
-        }
     }
 
     private var sideMenuOverlay: some View {
@@ -283,7 +280,7 @@ struct HomeView: View {
                     ScanningLineView()
                 }
                 Spacer()
-                Text("Pedestal üzerindeki kodu çerçeveye hizalayın").font(.footnote).foregroundColor(.white.opacity(0.7)).padding(.bottom, 40)
+                Text("Pedestal üzerindeki kodu çerçeveye hizalayın").font(.body).foregroundColor(.white.opacity(0.7)).padding(.bottom, 40)
             }
         }
     }
@@ -323,7 +320,7 @@ struct ActiveUsageCard: View {
                             Image(systemName: "drop.fill")
                                 .font(.caption)
                                 .foregroundColor(.blue)
-                            Text(String(format: "%.3f m³", viewModel.currentWaterUsage))
+                            Text(String(format: "%.1f m³", viewModel.currentWaterUsage))
                                 .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
@@ -339,7 +336,7 @@ struct ActiveUsageCard: View {
                             Image(systemName: "bolt.fill")
                                 .font(.caption)
                                 .foregroundColor(.yellow)
-                            Text(String(format: "%.2f kWh", viewModel.currentElectricityUsage))
+                            Text(String(format: "%.1f kWh", viewModel.currentElectricityUsage))
                                 .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)

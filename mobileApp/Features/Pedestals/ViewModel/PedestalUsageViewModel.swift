@@ -90,7 +90,90 @@ class PedestalUsageViewModel: ObservableObject {
                 await self.refreshPedestalData()
                 await self.refreshPedestalData()
             } catch {
+                await MainActor.run {
+                    self.errorMessage = "Su kapatma başarısız: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    // Async wrapper for water toggle with success/failure return
+    func toggleWaterAsync() async -> Bool {
+        let currentBalance = pedestal.balance
+        
+        if isWaterActive {
+            // Kapatma işlemi
+            isLoading = true
+            do {
+                let request = ElektrikSuKontrolRequest(
+                    istasyonId: pedestal.id,
+                    kartId: pedestal.kartId ?? "",
+                    suElektrik: true,
+                    islem: 0
+                )
                 
+                try await apiService.postElektrikSuKontrol(request: request)
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                await self.refreshPedestalData()
+                
+                await MainActor.run {
+                    self.isWaterActive = false
+                    self.isLoading = false
+                    
+                    if let startVal = self.startWaterMeterValue {
+                        let endVal = self.currentWaterUsage
+                        let consumption = max(0, endVal - startVal)
+                        let cost = consumption * (self.pedestal.waterRate > 0 ? self.pedestal.waterRate : 10.0) / 1000.0
+                        self.saveUsageToHistory(type: .water, consumption: consumption, cost: cost)
+                    }
+                    self.startWaterMeterValue = nil
+                }
+                return true
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Su kapatma başarısız: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+                return false
+            }
+        } else {
+            // Açma işlemi
+            guard currentBalance >= 1.0 else {
+                await MainActor.run {
+                    self.showLowBalanceAlert = true
+                }
+                return false
+            }
+            
+            isLoading = true
+            do {
+                let request = ElektrikSuKontrolRequest(
+                    istasyonId: pedestal.id,
+                    kartId: pedestal.kartId ?? "",
+                    suElektrik: true,
+                    islem: 1
+                )
+                
+                try await apiService.postElektrikSuKontrol(request: request)
+                await self.refreshPedestalData()
+                
+                await MainActor.run {
+                    self.isWaterActive = true
+                    self.isLoading = false
+                    self.waterStartTime = Date()
+                    self.startWaterMeterValue = self.currentWaterUsage
+                }
+                
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                await self.refreshPedestalData()
+                return true
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Su açma başarısız: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+                return false
             }
         }
     }
@@ -140,7 +223,6 @@ class PedestalUsageViewModel: ObservableObject {
             }
         }
     }
-
 
     
     // MARK: - Electricity Control
@@ -246,6 +328,85 @@ class PedestalUsageViewModel: ObservableObject {
         }
     }
     
+    // Async wrapper for electricity toggle with success/failure return
+    func toggleElectricityAsync() async -> Bool {
+        let currentBalance = pedestal.balance
+        
+        if isElectricityActive {
+            // Kapatma işlemi
+            isLoading = true
+            do {
+                let request = ElektrikSuKontrolRequest(
+                    istasyonId: pedestal.id,
+                    kartId: pedestal.kartId ?? "",
+                    suElektrik: false,
+                    islem: 0
+                )
+                
+                try await apiService.postElektrikSuKontrol(request: request)
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                await self.refreshPedestalData()
+                
+                await MainActor.run {
+                    self.isElectricityActive = false
+                    self.isLoading = false
+                    
+                    if let startVal = self.startElectricityMeterValue {
+                        let endVal = self.currentElectricityUsage
+                        let consumption = max(0, endVal - startVal)
+                        let cost = consumption * (self.pedestal.electricityRate > 0 ? self.pedestal.electricityRate : 5.0)
+                        self.saveUsageToHistory(type: .electricity, consumption: consumption, cost: cost)
+                    }
+                    self.startElectricityMeterValue = nil
+                }
+                return true
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Elektrik kapatma başarısız: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+                return false
+            }
+        } else {
+            // Açma işlemi
+            guard currentBalance >= 10.0 else {
+                await MainActor.run {
+                    self.showLowBalanceAlert = true
+                }
+                return false
+            }
+            
+            isLoading = true
+            do {
+                let request = ElektrikSuKontrolRequest(
+                    istasyonId: pedestal.id,
+                    kartId: pedestal.kartId ?? "",
+                    suElektrik: false,
+                    islem: 1
+                )
+                
+                try await apiService.postElektrikSuKontrol(request: request)
+                await self.refreshPedestalData()
+                
+                await MainActor.run {
+                    self.isElectricityActive = true
+                    self.electricityStartTime = Date()
+                    self.isLoading = false
+                    self.startElectricityMeterValue = self.currentElectricityUsage
+                }
+                
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                await self.refreshPedestalData()
+                return true
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Elektrik açma başarısız: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+                return false
+            }
+        }
+    }
 
     
     // MARK: - Balance Operations

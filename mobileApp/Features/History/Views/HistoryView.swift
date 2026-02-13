@@ -165,14 +165,6 @@ struct HistoryView: View {
             ChartView(data: historyVM.chartData, maxValue: historyVM.maxChartValue, type: historyVM.selectedConsumptionType)
                 .frame(height: 200).padding().background(Color.white.opacity(0.05)).cornerRadius(15).padding(.horizontal)
             
-            HStack {
-                StatisticView(title: "Toplam", value: String(format: "%.1f", historyVM.totalValue), unit: historyVM.selectedConsumptionType.unit)
-                Divider().background(Color.white.opacity(0.2)).frame(height: 30)
-                StatisticView(title: "Ortalama", value: String(format: "%.1f", historyVM.averageValue), unit: historyVM.selectedConsumptionType.unit)
-                Divider().background(Color.white.opacity(0.2)).frame(height: 30)
-                StatisticView(title: "Maksimum", value: String(format: "%.1f", historyVM.maxChartValue), unit: historyVM.selectedConsumptionType.unit)
-            }
-            .padding().background(Color.white.opacity(0.05)).cornerRadius(10).padding(.horizontal)
         }
     }
 

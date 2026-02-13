@@ -37,7 +37,7 @@ struct BalanceView: View {
                             }
                             
                             if let user = authViewModel.currentUser {
-                                Text("₺\(user.balance, specifier: "%.0f")")
+                                Text("₺\(user.balance, specifier: "%.2f")")
                                     .font(.system(size: 45, weight: .bold, design: .rounded))
                             }
                         }
@@ -81,15 +81,32 @@ struct BalanceView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.white.opacity(0.7))
                             
-                            TextField("0", text: $amount)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.center)
-                                .font(.system(size: 24, weight: .bold, design: .rounded))
-                                .padding()
-                                .background(Color.white.opacity(0.05))
-                                .cornerRadius(15)
-                                .foregroundColor(.white)
-                                .overlay(RoundedRectangle(cornerRadius: 15).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            HStack {
+                                Spacer() // Sol boşluk (ortalamak için)
+                                
+                                // Tutar girildiğinde veya girilmeden önce sembolün rengini ayarla
+                                Text("₺")
+                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                                    .foregroundColor(amount.isEmpty ? .white.opacity(0.3) : .white)
+                                
+                                // TextField
+                                TextField("0", text: $amount)
+                                    .keyboardType(.numberPad)
+                                    .fixedSize() // Yazdıkça genişlemesini sağlar, böylece sembolle bitişik kalır
+                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .multilineTextAlignment(.center)
+                                
+                                Spacer() // Sağ boşluk (ortalamak için)
+                            }
+                            .padding()
+                            .frame(height: 60) // Yüksekliği sabitlemek için
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(15)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 15)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            )
                         }
                         
                         // ÖDEME YÖNTEMLERİ

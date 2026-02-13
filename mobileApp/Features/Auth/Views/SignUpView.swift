@@ -12,7 +12,10 @@ struct SignUpView: View {
     @State private var address = ""
     @State private var tcIdentityNumber = ""
     
+    @State private var showSettings = false // Ayarlar sheet kontrolü
+    @State private var newBaseURL = ""
     
+    // Giriş sayfasındakiyle aynı mavi tonu
     let brandBlue = Color(red: 0.1, green: 0.35, blue: 0.7)
     
     var body: some View {
@@ -21,7 +24,7 @@ struct SignUpView: View {
             brandBlue.ignoresSafeArea()
             
             VStack {
-                // Özel Toolbar İptal butonu için
+                // Özel Toolbar (İptal butonu için)
                 HStack {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
@@ -34,8 +37,14 @@ struct SignUpView: View {
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
-                    // Denge sağlamak için boş alan
-                    Color.clear.frame(width: 50, height: 50)
+                    
+                    // Ayarlar Butonu (Gizli Özellik)
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape.fill")
+                            .foregroundColor(.white.opacity(0.6))
+                            .font(.title3)
+                            .padding()
+                    }
                 }
                 
                 ScrollView(showsIndicators: false) {
@@ -102,6 +111,47 @@ struct SignUpView: View {
                         
                         Spacer(minLength: 50)
                     }
+                }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            settingsView
+        }
+    }
+    
+    // MARK: - Settings View (Base URL Config)
+    private var settingsView: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Sunucu Yapılandırması")) {
+                    Text("API Base URL Değiştir")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    
+                    TextField("https://api.example.com", text: $newBaseURL)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                    
+                    Button("Kaydet") {
+                        if !newBaseURL.isEmpty {
+                            ApiService.shared.updateBaseURL(newBaseURL)
+                            showSettings = false
+                        }
+                    }
+                    .disabled(newBaseURL.isEmpty)
+                }
+                
+                Section {
+                    Button("Varsayılan Ayarlara Dön", role: .destructive) {
+                        ApiService.shared.resetBaseURL()
+                        showSettings = false
+                    }
+                }
+            }
+            .navigationTitle("Geliştirici Ayarları")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Kapat") { showSettings = false }
                 }
             }
         }

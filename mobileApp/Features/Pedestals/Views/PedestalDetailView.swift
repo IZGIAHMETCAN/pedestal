@@ -17,13 +17,114 @@ struct PedestalDetailView: View {
     @State private var showWaterConfirmation = false // Su açma/kapama onayı
     @State private var showElectricityConfirmation = false // Elektrik açma/kapama onayı
     
+    // Su/Elektrik işlem bildirimleri
+    @State private var showWaterSuccessAlert = false
+    @State private var showWaterErrorAlert = false
+    @State private var showElectricitySuccessAlert = false
+    @State private var showElectricityErrorAlert = false
+    @State private var waterAlertMessage: String = ""
+    @State private var electricityAlertMessage: String = ""
+    
+    // Başarı/Başarısız bildirimleri için
+    @State private var showTransferSuccessAlert = false
+    @State private var showTransferErrorAlert = false
+    @State private var showRefundSuccessAlert = false
+    @State private var showRefundErrorAlert = false
+    @State private var alertErrorMessage: String = ""
+    
+    // DEĞİŞİKLİK 2: Init içinde GlobalUsageManager'ı bağlıyoruz
     init(pedestal: Pedestal) {
         self.pedestal = pedestal
+        // Manager'dan bu pedestal için çalışan (veya yeni) beyni alıyoruz
         self._usageViewModel = ObservedObject(wrappedValue: GlobalUsageManager.shared.getViewModel(for: pedestal))
     }
     
     var body: some View {
+        contentWithEffects
+            .navigationTitle(pedestal.pedestalNumber)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .navigationDestination(isPresented: $navigateToBalance) {
+                BalanceView().environmentObject(authViewModel)
+            }
+            .navigationDestination(isPresented: $navigateToHistory) {
+                UsageHistoryView(pedestalId: pedestal.id)
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button(action: { navigateToBalance = true }) {
+                            Label("Bakiye Yükle", systemImage: "plus.circle.fill")
+                        }
+                        
+                        Button(action: { navigateToHistory = true }) {
+                            Label("Kullanım Geçmişi", systemImage: "clock.fill")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .foregroundColor(.cyan)
+                    }
+                }
+            }
+            .sheet(isPresented: $showTransferSheet) {
+                stationTransferSheet
+            }
+    }
+    
+    private var contentWithEffects: some View {
+        content
+            .alert("Yetersiz Bakiye", isPresented: $usageViewModel.showLowBalanceAlert) {
+                Button("Tamam", role: .cancel) { }
+                Button("Bakiye Yükle") { navigateToBalance = true }
+            } message: {
+                Text("Bakiyeniz yetersiz. Lütfen bakiye yükleyiniz.")
+            }
+            .alert("İşlem Başarılı", isPresented: $showTransferSuccessAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text("Bakiye başarıyla istasyona aktarıldı.")
+            }
+            .alert("İşlem Başarısız", isPresented: $showTransferErrorAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text("Transfer işlemi başarısız oldu. \(alertErrorMessage)")
+            }
+            .alert("İşlem Başarılı", isPresented: $showRefundSuccessAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text("Bakiye başarıyla ana hesabınıza iade edildi.")
+            }
+            .alert("İşlem Başarısız", isPresented: $showRefundErrorAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text("İade işlemi başarısız oldu. \(alertErrorMessage)")
+            }
+            .alert("İşlem Başarılı", isPresented: $showWaterSuccessAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text(waterAlertMessage)
+            }
+            .alert("İşlem Başarısız", isPresented: $showWaterErrorAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text(waterAlertMessage)
+            }
+            .alert("İşlem Başarılı", isPresented: $showElectricitySuccessAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text(electricityAlertMessage)
+            }
+            .alert("İşlem Başarısız", isPresented: $showElectricityErrorAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text(electricityAlertMessage)
+            }
+    }
+
+    private var content: some View {
         ZStack {
+            // Arka Plan Gradient (Senin orijinal gradient'in)
             LinearGradient(
                 gradient: Gradient(colors: [
                     Color(red: 0.02, green: 0.12, blue: 0.18),
@@ -42,46 +143,70 @@ struct PedestalDetailView: View {
                     // Bakiye kartı
                     balanceCard
 
-                    // Su Kontrolü
-                    serviceControlCard(
-                        title: "Su",
-                        icon: "drop.fill",
-                        color: .blue,
-                        isActive: usageViewModel.isWaterActive,
-                        toggleAction: { showWaterConfirmation = true },
-                        usageValue: usageViewModel.currentWaterUsage,
-                        unit: "Lt"
-                    )
-                    .alert(isPresented: $showWaterConfirmation) {
-                        Alert(
-                            title: Text(usageViewModel.isWaterActive ? "Suyu Kapat" : "Suyu Aç"),
-                            message: Text(usageViewModel.isWaterActive ? "Suyu kapatmak istediğinize emin misiniz?" : "Suyu açmak istediğinize emin misiniz?"),
-                            primaryButton: .default(Text("Evet")) {
-                                usageViewModel.toggleWater()
-                            },
-                            secondaryButton: .cancel(Text("Hayır"))
+                    HStack(spacing: 15) {
+                        // Su Kontrolü
+                        serviceControlCard(
+                            title: "Su\nTüketimi",
+                            icon: "drop.fill",
+                            color: .blue,
+                            isActive: usageViewModel.isWaterActive,
+                            toggleAction: { showWaterConfirmation = true },
+                            usageValue: usageViewModel.currentWaterUsage,
+                            unit: "Lt"
                         )
-                    }
-                    
-                    // Elektrik Kontrolü
-                    serviceControlCard(
-                        title: "Elektrik",
-                        icon: "bolt.fill",
-                        color: .yellow,
-                        isActive: usageViewModel.isElectricityActive,
-                        toggleAction: { showElectricityConfirmation = true },
-                        usageValue: usageViewModel.currentElectricityUsage,
-                        unit: "Watt"
-                    )
-                    .alert(isPresented: $showElectricityConfirmation) {
-                        Alert(
-                            title: Text(usageViewModel.isElectricityActive ? "Elektriği Kapat" : "Elektriği Aç"),
-                            message: Text(usageViewModel.isElectricityActive ? "Elektriği kapatmak istediğinize emin misiniz?" : "Elektriği açmak istediğinize emin misiniz?"),
-                            primaryButton: .default(Text("Evet")) {
-                                usageViewModel.toggleElectricity()
-                            },
-                            secondaryButton: .cancel(Text("Hayır"))
+                        .alert(isPresented: $showWaterConfirmation) {
+                            Alert(
+                                title: Text(usageViewModel.isWaterActive ? "Suyu Kapat" : "Suyu Aç"),
+                                message: Text(usageViewModel.isWaterActive ? "Suyu kapatmak istediğinize emin misiniz?" : "Suyu açmak istediğinize emin misiniz?"),
+                                primaryButton: .default(Text("Evet")) {
+                                    Task {
+                                        let isOpening = !usageViewModel.isWaterActive
+                                        let success = await usageViewModel.toggleWaterAsync()
+                                        
+                                        if success {
+                                            waterAlertMessage = isOpening ? "Su başarıyla açıldı." : "Su başarıyla kapatıldı."
+                                            showWaterSuccessAlert = true
+                                        } else {
+                                            waterAlertMessage = usageViewModel.errorMessage ?? "Bilinmeyen bir hata oluştu."
+                                            showWaterErrorAlert = true
+                                        }
+                                    }
+                                },
+                                secondaryButton: .cancel(Text("Hayır"))
+                            )
+                        }
+                        
+                        // Elektrik Kontrolü
+                        serviceControlCard(
+                            title: "Elektrik\nTüketimi",
+                            icon: "bolt.fill",
+                            color: .yellow,
+                            isActive: usageViewModel.isElectricityActive,
+                            toggleAction: { showElectricityConfirmation = true },
+                            usageValue: usageViewModel.currentElectricityUsage,
+                            unit: "Watt"
                         )
+                        .alert(isPresented: $showElectricityConfirmation) {
+                            Alert(
+                                title: Text(usageViewModel.isElectricityActive ? "Elektriği Kapat" : "Elektriği Aç"),
+                                message: Text(usageViewModel.isElectricityActive ? "Elektriği kapatmak istediğinize emin misiniz?" : "Elektriği açmak istediğinize emin misiniz?"),
+                                primaryButton: .default(Text("Evet")) {
+                                    Task {
+                                        let isOpening = !usageViewModel.isElectricityActive
+                                        let success = await usageViewModel.toggleElectricityAsync()
+                                        
+                                        if success {
+                                            electricityAlertMessage = isOpening ? "Elektrik başarıyla açıldı." : "Elektrik başarıyla kapatıldı."
+                                            showElectricitySuccessAlert = true
+                                        } else {
+                                            electricityAlertMessage = usageViewModel.errorMessage ?? "Bilinmeyen bir hata oluştu."
+                                            showElectricityErrorAlert = true
+                                        }
+                                    }
+                                },
+                                secondaryButton: .cancel(Text("Hayır"))
+                            )
+                        }
                     }
                     
                     
@@ -91,13 +216,9 @@ struct PedestalDetailView: View {
                 .padding(.top, 20)
             }
             .refreshable {
-
-                print("Pedestal detay sayfası yenileniyor...")
                 await usageViewModel.refreshPedestalData()
             }
             .task {
-
-                print("Pedestal detay sayfası açıldı veriler çekiliyor")
                 await usageViewModel.refreshPedestalData()
             }
             .task(id: usageViewModel.isWaterActive) {
@@ -111,46 +232,6 @@ struct PedestalDetailView: View {
                 if usageViewModel.isElectricityActive {
                     await usageViewModel.monitorUsage()
                 }
-            }
-
-        .navigationTitle(pedestal.pedestalNumber)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .navigationDestination(isPresented: $navigateToBalance) {
-            BalanceView().environmentObject(authViewModel)
-        }
-        .navigationDestination(isPresented: $navigateToHistory) {
-            UsageHistoryView(pedestalId: pedestal.id)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(action: { navigateToBalance = true }) {
-                        Label("Bakiye Yükle", systemImage: "plus.circle.fill")
-                    }
-                    
-                    Button(action: { navigateToHistory = true }) {
-                        Label("Kullanım Geçmişi", systemImage: "clock.fill")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle.fill")
-                        .foregroundColor(.cyan)
-                }
-            }
-        }
-
-        .alert("Yetersiz Bakiye", isPresented: $usageViewModel.showLowBalanceAlert) {
-            Button("Tamam", role: .cancel) { }
-            Button("Bakiye Yükle") {
-                navigateToBalance = true
-            }
-        } message: {
-            Text("Bakiyeniz yetersiz. Lütfen bakiye yükleyiniz.")
-        }
-            // Transfer Sheet
-            .sheet(isPresented: $showTransferSheet) {
-                stationTransferSheet
             }
             
             // Loading Overlay (İade işlemi sırasında)
@@ -191,6 +272,9 @@ struct PedestalDetailView: View {
                 }
             }
         }
+
+
+
     }
     
     // MARK: - Subviews
@@ -214,7 +298,7 @@ struct PedestalDetailView: View {
                 
                 Spacer()
                 
-                Text(pedestal.status.rawValue)
+                Text("Kullanımda")
                     .font(.system(size: 11, weight: .bold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -231,7 +315,7 @@ struct PedestalDetailView: View {
                     Text("Su Tarifesi")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.5))
-                    Text("₺\(pedestal.waterRate, specifier: "%.2f")/m³")
+                    Text("₺300,00/m³")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.blue)
@@ -241,7 +325,7 @@ struct PedestalDetailView: View {
                     Text("Elektrik Tarifesi")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.5))
-                    Text("₺\(pedestal.electricityRate, specifier: "%.2f")/kWh")
+                    Text("₺30/kWh")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.yellow)
@@ -291,6 +375,7 @@ struct PedestalDetailView: View {
             }
             
             HStack(spacing: 12) {
+                // Pedestal'dan ana hesaba iade
                 // Pedestal'dan ana hesaba iade
                 Button(action: { showRefundConfirmation = true }) {
                     HStack {
@@ -350,60 +435,73 @@ struct PedestalDetailView: View {
     }
     
     private func serviceControlCard(
-        title: String,
-        icon: String,
-        color: Color,
-        isActive: Bool,
-        toggleAction: @escaping () -> Void,
-        usageValue: Double? = nil,
-        unit: String? = nil
-    ) -> some View {
-        VStack(spacing: 16) {
-            HStack {
-                HStack(spacing: 12) {
-                    Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(color)
-                
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                        
-                        if isActive, let usage = usageValue, let unit = unit {
-                            Text(String(format: "%.4f %@", usage, unit))
-                                .font(.caption)
-                                .foregroundColor(color)
-                                .fontWeight(.bold)
-                        }
-                    }
-                }
-            
-                Spacer()
-            
-                Button(action: toggleAction) {
-                    HStack(spacing: 8) {
-                        Image(systemName: isActive ? "stop.circle.fill" : "play.circle.fill")
-                        Text(isActive ? "Durdur" : "Başlat")
-                            .fontWeight(.semibold)
-                    }
+            title: String,
+            icon: String,
+            color: Color,
+            isActive: Bool,
+            toggleAction: @escaping () -> Void,
+            usageValue: Double? = nil,
+            unit: String? = nil
+        ) -> some View {
+            VStack(spacing: 12) {
+                // 1. Başlık
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.bold)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(isActive ? Color.red : color)
-                    .cornerRadius(25)
+                    .multilineTextAlignment(.center)
+                
+                // 2. Sembol (İkon)
+                Image(systemName: icon)
+                    .font(.system(size: 40))
+                    .foregroundColor(color)
+                    .padding(.vertical, 5)
+                    .shadow(color: color.opacity(0.5), radius: 10)
+                
+                // 3. Kullanım Miktarı
+                if isActive, let usage = usageValue, let unit = unit {
+                    Text(String(format: "%.1f %@", usage, unit))
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                } else {
+                    Text("-")
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                
+                Spacer()
+                
+                // 4. Açma/Kapama Butonu
+                Button(action: toggleAction) {
+                    Text(isActive ? "Kapa" : "Aç")
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(isActive ? Color.red.opacity(0.8) : color.opacity(0.8))
+                        .cornerRadius(12)
                 }
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, minHeight: 220) // Sabit yükseklik ve esnek genişlik
+            .background(
+                ZStack {
+                    Color.black.opacity(0.4) // Karartma katmanı
+                    Image("newşmage")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                }
+            )
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isActive ? color.opacity(0.5) : Color.white.opacity(0.1), lineWidth: isActive ? 2 : 1)
+            )
         }
-        .padding(20)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-            .stroke(isActive ? color.opacity(0.5) : Color.white.opacity(0.1), lineWidth: isActive ? 2 : 1)
-        )
-    }
     
 
     
@@ -455,19 +553,31 @@ struct PedestalDetailView: View {
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.7))
                         
-                        TextField("0", text: $transferAmount)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.center)
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .padding()
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(15)
-                            .foregroundColor(.white)
+                        HStack(spacing: 8) { // Sembol ve sayı arasındaki boşluk
+                            Spacer()
+                            
+                            // TL Sembolü
+                            Text("₺")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                            
+                            // Metin Giriş Alanı
+                            TextField("0", text: $transferAmount)
+                                .keyboardType(.decimalPad)
+                                .fixedSize() // Genişliğin içeriğe göre daralmasını sağlar
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                            
+                            Spacer()
+                        }
+                        .padding(.vertical, 16)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(15)
                     }
                     
                     // Hızlı Seçim Butonları
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ForEach([10, 20, 50], id: \.self) { amount in
+                        ForEach([100, 200, 500], id: \.self) { amount in
                             Button(action: { transferAmount = "\(amount)" }) {
                                 Text("₺\(amount)")
                                     .font(.headline)
@@ -529,12 +639,20 @@ struct PedestalDetailView: View {
         }
     }
     
+    // MARK: - Transfer Validation (0 TL için özel durum)
     private var isValidTransferAmount: Bool {
-        guard let amount = Double(transferAmount), amount > 0 else { return false }
+        guard let amount = Double(transferAmount) else { return false }
+        
+        // 0 TL'ye izin ver (ghost transfer için)
+        if amount == 0 { return true }
+        
+        // Normal transfer validasyonu
+        guard amount > 0 else { return false }
         guard let userBalance = authViewModel.currentUser?.balance else { return false }
         return amount <= userBalance
     }
-    
+
+    // MARK: - Transfer Function (Ghost Transfer Desteği)
     private func performTransfer() {
         guard let amount = Double(transferAmount) else { return }
         
@@ -543,6 +661,24 @@ struct PedestalDetailView: View {
         
         Task {
             do {
+                
+                if amount == 0 {
+                    print("Ghost Transfer: Cache bypass için 0 TL transfer yapılıyor...")
+                    
+                    // Backend'e 0 TL gönder (sadece cache'i temizlemek için)
+                    try await usageViewModel.loadBalanceToStation(amount: 0)
+                    
+                    await MainActor.run {
+                        isTransferring = false
+                        showTransferSheet = false
+                        transferAmount = ""
+                        
+                    }
+                    
+                    return
+                }
+                
+                print("Normal Transfer: \(amount) TL aktarılıyor...")
                 try await usageViewModel.loadBalanceToStation(amount: amount)
                 
                 await MainActor.run {
@@ -552,11 +688,18 @@ struct PedestalDetailView: View {
                     isTransferring = false
                     showTransferSheet = false
                     transferAmount = ""
+                    
+                    // Başarılı bildirimi göster
+                    showTransferSuccessAlert = true
                 }
             } catch {
                 await MainActor.run {
                     transferError = "Transfer başarısız: \(error.localizedDescription)"
+                    alertErrorMessage = error.localizedDescription
                     isTransferring = false
+                    
+                    // Başarısız bildirimi göster
+                    showTransferErrorAlert = true
                 }
             }
         }
@@ -564,6 +707,7 @@ struct PedestalDetailView: View {
     
     // MARK: - Refund Function
     private func refundPedestalBalance() {
+        print("Bakiye iadesi başlatılıyor...")
         print("Mevcut pedestal bakiyesi: \(pedestal.balance)")
         
         guard usageViewModel.pedestal.balance > 0 else {
@@ -575,9 +719,13 @@ struct PedestalDetailView: View {
         
         Task {
             do {
+                print("API isteği gönderiliyor: PostBakiyeIade")
                 let oldBalance = usageViewModel.pedestal.balance
                 
+                // API'ye iade isteği gönder
                 try await usageViewModel.refundBalance()
+                
+                print("Bakiye iadesi başarılı!")
                 
                 await MainActor.run {
                     // Ana hesaba pedestal bakiyesini ekle
@@ -589,6 +737,9 @@ struct PedestalDetailView: View {
                     
                     // İşlem bitti, loading kapat
                     isLoadingRefund = false
+                    
+                    // Başarılı bildirimi göster
+                    showRefundSuccessAlert = true
                 }
             } catch {
                 print("Bakiye iadesi başarısız: \(error)")
@@ -596,10 +747,12 @@ struct PedestalDetailView: View {
                 
                 await MainActor.run {
                     isLoadingRefund = false // Hata olsa da kapat
+                    alertErrorMessage = error.localizedDescription
                     
-                    // TODO: Alert ile kullanıcıya göster
-                    let errorMessage = "Bakiye iadesi başarısız: \(error.localizedDescription)"
-                    print("Kullanıcıya gösterilecek hata: \(errorMessage)")
+                    // Başarısız bildirimi göster
+                    showRefundErrorAlert = true
+                    
+                    print("Kullanıcıya hata gösterildi: \(error.localizedDescription)")
                 }
             }
         }
