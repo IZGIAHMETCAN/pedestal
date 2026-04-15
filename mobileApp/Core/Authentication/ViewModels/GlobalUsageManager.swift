@@ -10,7 +10,6 @@ class GlobalUsageManager: ObservableObject {
     private let trackedIdsKey = "tracked_pedestal_ids"
     
     private init() {
-        // Uygulama açıldığında kayıtlı ID'leri yükleyebiliriz
     }
     
     private func saveTrackedId(_ id: Int) {
@@ -40,36 +39,36 @@ class GlobalUsageManager: ObservableObject {
     
     /// Backend'den aktif kullanımları çekip memory'deki viewmodel'ları senkronize eder
     func syncActiveUsages() async {
-        print("🔄 syncActiveUsages: Senkronizasyon başlatıldı...")
+        print("syncActiveUsages: Senkronizasyon başlatıldı...")
         do {
             let apiService = ApiService.shared
             
             // 1. Backend'den "kullanılan" ve "boş" listelerini çek (İsimleri doğru almak için)
-            print("📡 syncActiveUsages: İstasyon listeleri çekiliyor...")
+            print("syncActiveUsages: İstasyon listeleri çekiliyor...")
             let activeFromBackend = (try? await apiService.getKullanilanPedestal()) ?? []
             let allStations = (try? await apiService.getBosIstasyonlar()) ?? []
             
             // 2. Lokal olarak takip edilen ID'leri çek
             let trackedIds = getTrackedIds()
-            print("📡 syncActiveUsages: Takip edilen ID'ler: \(trackedIds)")
+            print("syncActiveUsages: Takip edilen ID'ler: \(trackedIds)")
             
             // Tüm ID'leri birleştir (Backend'den gelenler + Bizim yerel takip ettiklerimiz)
             var allIdsToSync = Set(activeFromBackend.map { $0.istasyonId })
             allIdsToSync.formUnion(trackedIds)
             
             if allIdsToSync.isEmpty {
-                print("ℹ️ syncActiveUsages: Senkronize edilecek istasyon bulunamadı.")
+                print("syncActiveUsages: Senkronize edilecek istasyon bulunamadı.")
                 return
             }
             
-            print("📡 syncActiveUsages: \(allIdsToSync.count) istasyon için durum sorgulanıyor...")
+            print("syncActiveUsages: \(allIdsToSync.count) istasyon için durum sorgulanıyor...")
             
             var syncedIds = Set<Int>()
             
             for pedestalId in allIdsToSync {
                 do {
                     // 3. Her istasyon için son durumu (bakiye vb.) çek
-                    print("📡 syncActiveUsages: İstasyon \(pedestalId) için detay çekiliyor...")
+                    print(" syncActiveUsages: İstasyon \(pedestalId) için detay çekiliyor...")
                     let istasyonBilgi = try await apiService.getIstasyonSonKayit(istasyonId: pedestalId)
                     
                     // PedestalResponse'u bul (İsim ve konum bilgisi için)
@@ -83,12 +82,12 @@ class GlobalUsageManager: ObservableObject {
                     let isActuallyActive = (istasyonBilgi.bakiye ?? 0) > 0 || (istasyonBilgi.su ?? false) || (istasyonBilgi.elektrik ?? false) || activeFromBackend.contains(where: { $0.istasyonId == pedestalId })
                     
                     if !isActuallyActive {
-                        print("ℹ️ syncActiveUsages: İstasyon \(pedestalId) artık aktif değil (Bakiye: \(istasyonBilgi.bakiye ?? 0)).")
+                        print("syncActiveUsages: İstasyon \(pedestalId) artık aktif değil (Bakiye: \(istasyonBilgi.bakiye ?? 0)).")
                         continue
                     }
                     
                     syncedIds.insert(pedestalId)
-                    print("✅ syncActiveUsages: İstasyon \(pedestalId) aktif. Bakiye: \(updatedPedestal.balance)")
+                    print("syncActiveUsages: İstasyon \(pedestalId) aktif. Bakiye: \(updatedPedestal.balance)")
                     
                     await MainActor.run {
                         if let existingVM = activeViewModels[pedestalId] {
@@ -111,7 +110,7 @@ class GlobalUsageManager: ObservableObject {
                         }
                     }
                 } catch {
-                    print("⚠️ syncActiveUsages: İstasyon \(pedestalId) sorgulanırken hata: \(error.localizedDescription)")
+                    print("syncActiveUsages: İstasyon \(pedestalId) sorgulanırken hata: \(error.localizedDescription)")
                 }
             }
             
@@ -135,10 +134,10 @@ class GlobalUsageManager: ObservableObject {
                 }
             }
             
-            print("✅ syncActiveUsages: Tamamlandı. \(syncedIds.count) istasyon gösteriliyor.")
+            print("syncActiveUsages: Tamamlandı. \(syncedIds.count) istasyon gösteriliyor.")
             
         } catch {
-            print("❌ syncActiveUsages: Genel hata: \(error)")
+            print("syncActiveUsages: Genel hata: \(error)")
         }
     }
 }

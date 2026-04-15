@@ -37,7 +37,7 @@ struct BalanceView: View {
                             }
                             
                             if let user = authViewModel.currentUser {
-                                Text("₺\(user.balance, specifier: "%.2f")")
+                                Text("€\(user.balance, specifier: "%.2f")")
                                     .font(.system(size: 45, weight: .bold, design: .rounded))
                             }
                         }
@@ -59,7 +59,7 @@ struct BalanceView: View {
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                                 ForEach(presetAmounts, id: \.self) { preset in
                                     Button(action: { amount = "\(preset)" }) {
-                                        Text("₺\(preset)")
+                                        Text("€\(preset)")
                                             .font(.system(size: 15, weight: .bold))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 12)
@@ -85,7 +85,7 @@ struct BalanceView: View {
                                 Spacer() // Sol boşluk (ortalamak için)
                                 
                                 // Tutar girildiğinde veya girilmeden önce sembolün rengini ayarla
-                                Text("₺")
+                                Text("€")
                                     .font(.system(size: 24, weight: .bold, design: .rounded))
                                     .foregroundColor(amount.isEmpty ? .white.opacity(0.3) : .white)
                                 

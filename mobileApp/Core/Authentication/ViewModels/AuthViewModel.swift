@@ -36,6 +36,7 @@ class AuthViewModel: ObservableObject {
                     self.isAuthenticated = true
                     UserDefaults.standard.set(true, forKey: "isAuthenticated")
                     UserDefaults.standard.set(tokenResponse.email, forKey: "currentUserEmail")
+                    UserDefaults.standard.set(tokenResponse.userFullName ?? "", forKey: "currentUserName")
                     self.isLoading = false
                 }
                 
@@ -120,22 +121,22 @@ class AuthViewModel: ObservableObject {
         let isAuthenticatedStored = UserDefaults.standard.bool(forKey: "isAuthenticated")
         
         if isAuthenticatedStored && apiService.isAuthenticated {
-            // Token var, kullanıcı bilgilerini çekmeye çalış
             Task {
-                await refreshBalance()
-                // Email'i UserDefaults'tan al
+                // 1. Önce email'i al ve currentUser'ı oluştur
                 if let email = UserDefaults.standard.string(forKey: "currentUserEmail") {
                     await MainActor.run {
-                        // Temel kullanıcı objesi oluştur
                         self.currentUser = User(
                             email: email,
                             password: "",
-                            name: "",
+                            name: UserDefaults.standard.string(forKey: "currentUserName") ?? "",
                             balance: 0.0
                         )
                         self.isAuthenticated = true
                     }
                 }
+                
+                // 2. Sonra bakiyeyi çek (artık currentUser nil değil)
+                await refreshBalance()
             }
         }
     }
@@ -305,3 +306,4 @@ class AuthViewModel: ObservableObject {
         )
     }
 }
+

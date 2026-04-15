@@ -128,8 +128,8 @@ struct HistoryView: View {
                 SummaryCard(title: "Toplam Elektrik", value: String(format: "%.1f", historyVM.summary.totalElectricity), unit: "kWh", icon: "bolt.fill", color: Color.yellow)
             }
             HStack(spacing: 15) {
-                SummaryCard(title: "Toplam Maliyet", value: String(format: "%.1f", historyVM.summary.totalCost), unit: "TL", icon: "turkishlirasign.circle.fill", color: Color.green)
-                SummaryCard(title: "Günlük Ortalama", value: String(format: "%.1f", historyVM.summary.averageDailyCost), unit: "TL/Gün", icon: "calendar", color: Color.purple)
+                SummaryCard(title: "Toplam Maliyet", value: String(format: "%.1f", historyVM.summary.totalCost), unit: "EURO", icon: "turkishlirasign.circle.fill", color: Color.green)
+                SummaryCard(title: "Günlük Ortalama", value: String(format: "%.1f", historyVM.summary.averageDailyCost), unit: "EURO/Gün", icon: "calendar", color: Color.purple)
             }
         }.padding(.horizontal)
     }
@@ -175,7 +175,7 @@ struct HistoryView: View {
                 Spacer()
                 Text("Su").frame(width: 60, alignment: .trailing)
                 Text("Elek.").frame(width: 70, alignment: .trailing)
-                Text("TL").frame(width: 60, alignment: .trailing)
+                Text("EURO").frame(width: 60, alignment: .trailing)
             }
             .font(.caption.bold()).foregroundColor(.cyan).padding()
             .background(Color.cyan.opacity(0.1))

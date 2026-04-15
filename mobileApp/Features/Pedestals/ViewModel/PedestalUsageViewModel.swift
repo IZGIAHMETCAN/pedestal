@@ -415,7 +415,8 @@ class PedestalUsageViewModel: ObservableObject {
         let request = BakiyeIstasyonRequest(
             istasyonId: pedestal.id,
             kartId: pedestal.kartId ?? "",
-            amount: amount
+            amount: amount,
+            currency: "EURO"
         )
         
         try await apiService.postBakiyeIstasyon(request: request)
@@ -564,3 +565,5 @@ class PedestalUsageViewModel: ObservableObject {
         stopAllServices()
     }
 }
+
+

@@ -38,6 +38,7 @@ struct BakiyeIstasyonRequest: Codable {
     let istasyonId: Int
     let kartId: String
     let amount: Double
+    let currency: String
 }
 
 /// Elektrik/Su kontrol request
@@ -241,3 +242,4 @@ enum APIError: LocalizedError {
         }
     }
 }
+

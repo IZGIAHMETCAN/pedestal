@@ -73,7 +73,7 @@ struct UsageHistoryView: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
                     
-                    Text("₺\(totalWaterCost, specifier: "%.2f")")
+                    Text("€\(totalWaterCost, specifier: "%.2f")")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.blue)
@@ -93,7 +93,7 @@ struct UsageHistoryView: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
                     
-                    Text("₺\(totalElectricityCost, specifier: "%.2f")")
+                    Text("€\(totalElectricityCost, specifier: "%.2f")")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.yellow)
@@ -116,7 +116,7 @@ struct UsageHistoryView: View {
                 
                 Spacer()
                 
-                Text("₺\(totalCost, specifier: "%.2f")")
+                Text("€\(totalCost, specifier: "%.2f")")
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.cyan)
@@ -207,7 +207,7 @@ struct UsageRowView: View {
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.5))
                     
-                    Text("₺\(usage.cost, specifier: "%.4f")")
+                    Text("€\(usage.cost, specifier: "%.4f")")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.white)

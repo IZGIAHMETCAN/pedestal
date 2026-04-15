@@ -25,7 +25,4 @@ struct ContentView: View {
 }
 
 
-#Preview {
-    AddCardView()
-        .environmentObject(AuthViewModel())
-}
+

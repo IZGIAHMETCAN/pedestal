@@ -47,21 +47,27 @@ struct HomeView: View {
                     await authViewModel.refreshBalance()
                 }
                 .task {
-                    // Auth state'in yüklenmesini bekle (Race condition önlemi)
-                                        var retryCount = 0
-                                        while !authViewModel.isAuthenticated && retryCount < 10 {
-                                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2sn
-                                            retryCount += 1
-                                        }
-                                        
-                                        print("🏠 HomeView: Başlangıç güncelleniyor... (Auth: \(authViewModel.isAuthenticated))")
-                                        
-                                        if authViewModel.isAuthenticated {
-                                            await authViewModel.refreshBalance()
-                                            await GlobalUsageManager.shared.syncActiveUsages()
-                                        }
+                    // 1. Auth state'in yüklenmesini bekle
+                    var retryCount = 0
+                    while !authViewModel.isAuthenticated && retryCount < 10 {
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2sn
+                        retryCount += 1
+                    }
+                    
+                    // 2. currentUser'ın yüklenmesini bekle (Race condition düzeltmesi)
+                    retryCount = 0
+                    while authViewModel.currentUser == nil && retryCount < 10 {
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2sn
+                        retryCount += 1
+                    }
+                    
+                    print(" HomeView: Başlangıç güncelleniyor... (Auth: \(authViewModel.isAuthenticated))")
+                    
+                    if authViewModel.isAuthenticated {
+                        await authViewModel.refreshBalance()
+                        await GlobalUsageManager.shared.syncActiveUsages()
+                    }
                 }
-                
                 
                 customBottomBar
                 
@@ -91,7 +97,6 @@ struct HomeView: View {
                 set: { if !$0 { selectedPedestalId = nil } }
             )) {
                 if let pedestalId = selectedPedestalId {
-                    // QR kod okutulunca direkt pedestal detayına git
                     QRPedestalDetailLoader(pedestalId: pedestalId)
                         .environmentObject(authViewModel)
                 }
@@ -113,30 +118,30 @@ struct HomeView: View {
     
     // MARK: - Aktif Kullanım Kontrolü
     private var hasActiveUsage: Bool {
-            !globalUsageManager.activeViewModels.values.filter { $0.pedestal.balance > 0 }.isEmpty
-        }
+        !globalUsageManager.activeViewModels.values.filter { $0.pedestal.balance > 0 }.isEmpty
+    }
     
     // MARK: - Aktif Kullanımlar Bölümü
     private var activeUsageSection: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
-                            Image(systemName: "bolt.circle.fill")
-                                .font(.title3)
-                                .foregroundColor(.cyan)
-                            Text("Aktif Kullanımlar")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                        }
-                        .padding(.bottom, 5)
-                        
-                        VStack(spacing: 12) {
-                            ForEach(Array(globalUsageManager.activeViewModels.values.filter { $0.pedestal.balance > 0 }), id: \.pedestal.id) { viewModel in
-                                ActiveUsageCard(viewModel: viewModel) {
-                                    selectedPedestalId = viewModel.pedestal.id
-                                }
-                            }
-                        }
+                Image(systemName: "bolt.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.cyan)
+                Text("Aktif Kullanımlar")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+            }
+            .padding(.bottom, 5)
+            
+            VStack(spacing: 12) {
+                ForEach(Array(globalUsageManager.activeViewModels.values.filter { $0.pedestal.balance > 0 }), id: \.pedestal.id) { viewModel in
+                    ActiveUsageCard(viewModel: viewModel) {
+                        selectedPedestalId = viewModel.pedestal.id
+                    }
+                }
+            }
         }
         .padding(20)
         .background(
@@ -167,7 +172,11 @@ struct HomeView: View {
             Button(action: { isScanning = true }) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 22)
-                        .fill(LinearGradient(gradient: Gradient(colors: [Color.cyan, Color.blue]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .fill(LinearGradient(
+                            gradient: Gradient(colors: [Color.cyan, Color.blue]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
                         .frame(width: 75, height: 75)
                         .shadow(color: .cyan.opacity(0.5), radius: 12, y: 8)
                     
@@ -175,7 +184,7 @@ struct HomeView: View {
                         .font(.system(size: 35, weight: .bold))
                         .foregroundColor(.white)
                 }
-                .offset(y: -25) // Çubuğun dışına taşma efekti
+                .offset(y: -25)
             }
             .frame(maxWidth: .infinity)
             
@@ -202,7 +211,7 @@ struct HomeView: View {
         .padding(.bottom, 10)
     }
     
-    // MARK: - Yardımcı Alt Bileşenler
+    // MARK: - Header Bölümü
     private var headerSection: some View {
         VStack(spacing: 20) {
             Image(systemName: "bolt.circle.fill")
@@ -211,9 +220,22 @@ struct HomeView: View {
                 .shadow(color: .cyan.opacity(0.3), radius: 15)
             
             VStack(spacing: 8) {
-                Text("Hoş Geldiniz").foregroundColor(.white.opacity(0.7))
+                Text("Hoş Geldiniz")
+                    .foregroundColor(.white.opacity(0.7))
+                
+                // currentUser gelene kadar placeholder göster, gelince animasyonla belir
                 if let user = authViewModel.currentUser {
-                    Text(user.name).font(.largeTitle).fontWeight(.bold).foregroundColor(.white)
+                    Text(user.name)
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .transition(.opacity)
+                        .animation(.easeIn(duration: 0.4), value: authViewModel.currentUser != nil)
+                } else {
+                    // Yüklenirken boş alan koru (layout kaymasını önler)
+                    Text(" ")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
                 }
             }
         }
@@ -222,27 +244,55 @@ struct HomeView: View {
     private func balanceCard(user: User) -> some View {
         VStack(spacing: 20) {
             VStack(spacing: 15) {
-                Text("Mevcut Bakiyeniz").font(.headline).foregroundColor(.white.opacity(0.8))
-                Text("₺\(user.balance, specifier: "%.2f")").font(.system(size: 40, weight: .bold, design: .rounded)).foregroundColor(.white)
+                Text("Mevcut Bakiyeniz")
+                    .font(.headline)
+                    .foregroundColor(.white.opacity(0.8))
+                Text("₺\(user.balance, specifier: "%.2f")")
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
                 Button(action: { navigateToBalance = true }) {
-                    Text("Bakiye Yükle").fontWeight(.bold).padding(.horizontal, 40).padding(.vertical, 10)
-                        .background(Color.white.opacity(0.2)).foregroundColor(.white).cornerRadius(25)
-                        .overlay(RoundedRectangle(cornerRadius: 25).stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    Text("Bakiye Yükle")
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 40)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.2))
+                        .foregroundColor(.white)
+                        .cornerRadius(25)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 25)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        )
                 }
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 30)
-            .background(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.6), Color.blue.opacity(0.4)]), startPoint: .topLeading, endPoint: .bottomTrailing))
-            .cornerRadius(30).padding(.horizontal, 25)
-            
-            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 30)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.cyan.opacity(0.6), Color.blue.opacity(0.4)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(30)
+            .padding(.horizontal, 25)
+        }
     }
 
     private var sideMenuOverlay: some View {
         ZStack {
-            Color.black.opacity(0.5).ignoresSafeArea().onTapGesture { withAnimation { showMenu = false } }
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture { withAnimation { showMenu = false } }
             HStack {
-                SideMenuView(isShowing: $showMenu, editProfileAction: { navigateToEditProfile = true }, addCardAction: { navigateToAddCard = true }, historyAction: { navigateToHistory = true }, logoutAction: { authViewModel.signOut() })
-                    .environmentObject(authViewModel).transition(.move(edge: .leading))
+                SideMenuView(
+                    isShowing: $showMenu,
+                    editProfileAction: { navigateToEditProfile = true },
+                    addCardAction: { navigateToAddCard = true },
+                    historyAction: { navigateToHistory = true },
+                    logoutAction: { authViewModel.signOut() }
+                )
+                .environmentObject(authViewModel)
+                .transition(.move(edge: .leading))
                 Spacer()
             }
         }.zIndex(2)
@@ -251,11 +301,9 @@ struct HomeView: View {
     private var scannerSheet: some View {
         ZStack {
             QRCodeScannerView { result in
-                // QR koddan gelen değer istasyon ID'si olmalı (Int)
                 if let pedestalId = Int(result) {
                     self.selectedPedestalId = pedestalId
                     self.isScanning = false
-                    // Navigasyon tetiklenir
                 }
             }
             .ignoresSafeArea()
@@ -263,24 +311,41 @@ struct HomeView: View {
             Color.black.opacity(0.5)
                 .mask(ZStack {
                     Color.black
-                    RoundedRectangle(cornerRadius: 30).frame(width: 260, height: 260).blendMode(.destinationOut)
-                }).ignoresSafeArea()
+                    RoundedRectangle(cornerRadius: 30)
+                        .frame(width: 260, height: 260)
+                        .blendMode(.destinationOut)
+                })
+                .ignoresSafeArea()
 
             VStack {
                 HStack {
                     Text("QR Tara").font(.headline).foregroundColor(.white)
                     Spacer()
                     Button(action: { isScanning = false }) {
-                        Image(systemName: "xmark.circle.fill").font(.title).foregroundColor(.white.opacity(0.7))
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.white.opacity(0.7))
                     }
                 }.padding(25)
                 Spacer()
                 ZStack {
-                    ScannerCornerShape().stroke(LinearGradient(gradient: Gradient(colors: [.cyan, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 4).frame(width: 260, height: 260)
+                    ScannerCornerShape()
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.cyan, .blue]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 4
+                        )
+                        .frame(width: 260, height: 260)
                     ScanningLineView()
                 }
                 Spacer()
-                Text("Pedestal üzerindeki kodu çerçeveye hizalayın").font(.body).foregroundColor(.white.opacity(0.7)).padding(.bottom, 40)
+                Text("Pedestal üzerindeki kodu çerçeveye hizalayın")
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.bottom, 40)
             }
         }
     }
@@ -294,7 +359,6 @@ struct ActiveUsageCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 15) {
-                // Sol: Pedestal İkonu ve Bilgi
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Image(systemName: "ev.plug.ac.gb.t.fill")
@@ -313,7 +377,6 @@ struct ActiveUsageCard: View {
                 
                 Spacer()
                 
-                // Sağ: Aktif Hizmetler
                 VStack(alignment: .trailing, spacing: 8) {
                     if viewModel.isWaterActive {
                         HStack(spacing: 6) {
@@ -369,15 +432,26 @@ struct ActiveUsageCard: View {
     }
 }
 
-// MARK: - Tasarım Şekilleri (Dosya sonunda kalmalı)
+// MARK: - Tasarım Şekilleri
 struct ScannerCornerShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let len: CGFloat = 40
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY + len)); path.addLine(to: CGPoint(x: rect.minX, y: rect.minY)); path.addLine(to: CGPoint(x: rect.minX + len, y: rect.minY))
-        path.move(to: CGPoint(x: rect.maxX - len, y: rect.minY)); path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY)); path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + len))
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - len)); path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY)); path.addLine(to: CGPoint(x: rect.minX + len, y: rect.maxY))
-        path.move(to: CGPoint(x: rect.maxX - len, y: rect.maxY)); path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY)); path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - len))
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + len))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + len, y: rect.minY))
+        
+        path.move(to: CGPoint(x: rect.maxX - len, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + len))
+        
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - len))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + len, y: rect.maxY))
+        
+        path.move(to: CGPoint(x: rect.maxX - len, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - len))
         return path
     }
 }
@@ -386,9 +460,18 @@ struct ScanningLineView: View {
     @State private var move = false
     var body: some View {
         Rectangle()
-            .fill(LinearGradient(gradient: Gradient(colors: [.clear, .cyan, .clear]), startPoint: .leading, endPoint: .trailing))
+            .fill(LinearGradient(
+                gradient: Gradient(colors: [.clear, .cyan, .clear]),
+                startPoint: .leading,
+                endPoint: .trailing
+            ))
             .frame(width: 240, height: 2)
             .offset(y: move ? 120 : -120)
-            .onAppear { withAnimation(.linear(duration: 2).repeatForever(autoreverses: true)) { move = true } }
+            .onAppear {
+                withAnimation(.linear(duration: 2).repeatForever(autoreverses: true)) {
+                    move = true
+                }
+            }
     }
 }
+

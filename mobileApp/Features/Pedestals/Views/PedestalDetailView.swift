@@ -349,7 +349,7 @@ struct PedestalDetailView: View {
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.6))
                     
-                    Text("₺\(usageViewModel.pedestal.balance, specifier: "%.2f")")
+                    Text("€\(usageViewModel.pedestal.balance, specifier: "%.2f")")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
@@ -397,7 +397,7 @@ struct PedestalDetailView: View {
                         refundPedestalBalance()
                     }
                 } message: {
-                    Text("İstasyondaki ₺\(usageViewModel.pedestal.balance, specifier: "%.2f") tutarındaki bakiyenin tamamını ana hesabınıza aktarmak istiyor musunuz?")
+                    Text("İstasyondaki €\(usageViewModel.pedestal.balance, specifier: "%.2f") tutarındaki bakiyenin tamamını ana hesabınıza aktarmak istiyor musunuz?")
                 }
                 
                 // İstasyona transfer
@@ -475,7 +475,7 @@ struct PedestalDetailView: View {
                 
                 // 4. Açma/Kapama Butonu
                 Button(action: toggleAction) {
-                    Text(isActive ? "Kapa" : "Aç")
+                    Text(isActive ? "Kapat" : "Aç")
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -528,7 +528,7 @@ struct PedestalDetailView: View {
                         Text("Ana Hesap Bakiyeniz")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.7))
-                        Text("₺\(authViewModel.currentUser?.balance ?? 0, specifier: "%.2f")")
+                        Text("€\(authViewModel.currentUser?.balance ?? 0, specifier: "%.2f")")
                             .font(.system(size: 36, weight: .bold, design: .rounded))
                             .foregroundColor(.cyan)
                     }
@@ -542,7 +542,7 @@ struct PedestalDetailView: View {
                         Text("Mevcut İstasyon Bakiyesi")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.6))
-                        Text("₺\(usageViewModel.pedestal.balance, specifier: "%.2f")")
+                        Text("€\(usageViewModel.pedestal.balance, specifier: "%.2f")")
                             .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .foregroundColor(.orange)
                     }
@@ -557,7 +557,7 @@ struct PedestalDetailView: View {
                             Spacer()
                             
                             // TL Sembolü
-                            Text("₺")
+                            Text("€")
                                 .font(.system(size: 32, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                             
@@ -579,7 +579,7 @@ struct PedestalDetailView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach([100, 200, 500], id: \.self) { amount in
                             Button(action: { transferAmount = "\(amount)" }) {
-                                Text("₺\(amount)")
+                                Text("€\(amount)")
                                     .font(.headline)
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
