@@ -2,19 +2,25 @@ import SwiftUI
 
 @main
 struct mobileApp: App {
-    // AuthViewModel zaten sende vardı, koruyoruz.
     @StateObject private var authViewModel = AuthViewModel()
-    
-    // GlobalUsageManager'ı burada bir kez oluşturuyoruz.
-    // Bu sayede uygulama kapanana kadar tüm ViewModel'ler burada yaşar.
     @StateObject private var usageManager = GlobalUsageManager.shared
-     
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(authViewModel)
-                .environmentObject(usageManager) // Manager'ı tüm uygulamaya yayıyoruz
+                .environmentObject(usageManager)
+                .task(id: authViewModel.isAuthenticated) {
+                    guard authViewModel.isAuthenticated else { return }
+                    await GlobalUsageManager.shared.syncActiveUsages()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active, authViewModel.isAuthenticated else { return }
+                    Task {
+                        await GlobalUsageManager.shared.syncActiveUsages()
+                    }
+                }
         }
     }
 }
-

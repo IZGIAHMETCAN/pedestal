@@ -20,7 +20,7 @@ final class ApiService {
     }
         
     // MARK: - Simulation Mode
-    var isSimulationMode = true
+    var isSimulationMode = false
     
     // Simülasyon Durumları (State)
     struct SimulatedState {

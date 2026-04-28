@@ -6,31 +6,28 @@ class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var errorMessage: String?
     @Published var isLoading: Bool = false
-    
+
     private let apiService = ApiService.shared
-    
+
     init() {
         checkAuthentication()
     }
-    
-    // MARK: - Authentication Methods
-    
+
     func signIn(email: String, password: String) {
         errorMessage = nil
         isLoading = true
-        
+
         Task {
             do {
                 let tokenResponse = try await apiService.login(email: email, password: password)
-                
-                // Backend'den gelen kullanıcı bilgilerini kullan
+
                 let user = User(
                     email: tokenResponse.email,
                     password: "",
                     name: tokenResponse.userFullName ?? "",
-                    balance: 0.0 // Bakiye ayrıca API'den çekilecek
+                    balance: 0.0
                 )
-                
+
                 await MainActor.run {
                     self.currentUser = user
                     self.isAuthenticated = true
@@ -39,10 +36,10 @@ class AuthViewModel: ObservableObject {
                     UserDefaults.standard.set(tokenResponse.userFullName ?? "", forKey: "currentUserName")
                     self.isLoading = false
                 }
-                
-                // Bakiyeyi de çek
+
                 await refreshBalance()
-                
+                await GlobalUsageManager.shared.syncActiveUsages()
+
             } catch {
                 await MainActor.run {
                     if let apiError = error as? APIError {
@@ -57,72 +54,72 @@ class AuthViewModel: ObservableObject {
     }
     
     func signUp(email: String, password: String, name: String, boatName: String, adress: String, tcIdentityNumber: String) {
-        errorMessage = nil
-        isLoading = true
-        
-        Task {
-            do {
-                // Email kontrolü
-                let emailExists = try await apiService.postMailKontrol(email: email)
-                if emailExists {
+            errorMessage = nil
+            isLoading = true
+            
+            Task {
+                do {
+                    // Email kontrolü
+                    let emailExists = try await apiService.postMailKontrol(email: email)
+                    if emailExists {
+                        await MainActor.run {
+                            self.errorMessage = "Bu e-posta adresi zaten kayıtlı"
+                            self.isLoading = false
+                        }
+                        return
+                    }
+                    
+                    // TC kontrolü
+                    if tcIdentityNumber.count != 11 {
+                        await MainActor.run {
+                            self.errorMessage = "TC numarası 11 haneli olmalıdır"
+                            self.isLoading = false
+                        }
+                        return
+                    }
+                    
+                    let tcExists = try await apiService.postTCKontrol(tcNo: tcIdentityNumber)
+                    if tcExists {
+                        await MainActor.run {
+                            self.errorMessage = "Bu TC kimlik numarası zaten kayıtlı"
+                            self.isLoading = false
+                        }
+                        return
+                    }
+                    
+                    // TODO: Backend'e kullanıcı kayıt API'si eklendiğinde burası güncellenecek
                     await MainActor.run {
-                        self.errorMessage = "Bu e-posta adresi zaten kayıtlı"
+                        self.errorMessage = "Kayıt işlemi için backend API'si bekleniyor"
                         self.isLoading = false
                     }
-                    return
-                }
-                
-                // TC kontrolü
-                if tcIdentityNumber.count != 11 {
+                    
+                } catch {
                     await MainActor.run {
-                        self.errorMessage = "TC numarası 11 haneli olmalıdır"
+                        if let apiError = error as? APIError {
+                            self.errorMessage = apiError.errorDescription
+                        } else {
+                            self.errorMessage = "Kayıt başarısız: \(error.localizedDescription)"
+                        }
                         self.isLoading = false
                     }
-                    return
-                }
-                
-                let tcExists = try await apiService.postTCKontrol(tcNo: tcIdentityNumber)
-                if tcExists {
-                    await MainActor.run {
-                        self.errorMessage = "Bu TC kimlik numarası zaten kayıtlı"
-                        self.isLoading = false
-                    }
-                    return
-                }
-                
-                // TODO: Backend'e kullanıcı kayıt API'si eklendiğinde burası güncellenecek
-                await MainActor.run {
-                    self.errorMessage = "Kayıt işlemi için backend API'si bekleniyor"
-                    self.isLoading = false
-                }
-                
-            } catch {
-                await MainActor.run {
-                    if let apiError = error as? APIError {
-                        self.errorMessage = apiError.errorDescription
-                    } else {
-                        self.errorMessage = "Kayıt başarısız: \(error.localizedDescription)"
-                    }
-                    self.isLoading = false
                 }
             }
         }
-    }
-    
+
     func signOut() {
         apiService.logout()
         currentUser = nil
         isAuthenticated = false
         UserDefaults.standard.removeObject(forKey: "isAuthenticated")
         UserDefaults.standard.removeObject(forKey: "currentUserEmail")
+        GlobalUsageManager.shared.clearInMemory()
     }
-    
+
     private func checkAuthentication() {
         let isAuthenticatedStored = UserDefaults.standard.bool(forKey: "isAuthenticated")
-        
+
         if isAuthenticatedStored && apiService.isAuthenticated {
             Task {
-                // 1. Önce email'i al ve currentUser'ı oluştur
                 if let email = UserDefaults.standard.string(forKey: "currentUserEmail") {
                     await MainActor.run {
                         self.currentUser = User(
@@ -134,13 +131,12 @@ class AuthViewModel: ObservableObject {
                         self.isAuthenticated = true
                     }
                 }
-                
-                // 2. Sonra bakiyeyi çek (artık currentUser nil değil)
+
                 await refreshBalance()
+                await GlobalUsageManager.shared.syncActiveUsages()
             }
         }
     }
-    
     // MARK: - Balance Operations
     
     func addBalance(amount: Double, completion: @escaping (Bool, String?) -> Void) {

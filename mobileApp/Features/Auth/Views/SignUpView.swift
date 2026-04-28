@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct SignUpView: View {
-    @EnvironmentObject var authViewModel: AuthViewModel
-    @Environment(\.dismiss) var dismiss
-    
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    @Environment(\.dismiss) private var dismiss
+
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
@@ -11,20 +11,17 @@ struct SignUpView: View {
     @State private var boatName = ""
     @State private var address = ""
     @State private var tcIdentityNumber = ""
-    
-    @State private var showSettings = false // Ayarlar sheet kontrolü
+
+    @State private var showSettings = false
     @State private var newBaseURL = ""
-    
-    // Giriş sayfasındakiyle aynı mavi tonu
+
     let brandBlue = Color(red: 0.1, green: 0.35, blue: 0.7)
-    
+
     var body: some View {
         ZStack {
-            // 1. Arka Plan
             brandBlue.ignoresSafeArea()
-            
+
             VStack {
-                // Özel Toolbar (İptal butonu için)
                 HStack {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
@@ -32,13 +29,15 @@ struct SignUpView: View {
                             .font(.title3)
                             .padding()
                     }
+
                     Spacer()
+
                     Text("Yeni Hesap")
                         .font(.headline)
                         .foregroundColor(.white)
+
                     Spacer()
-                    
-                    // Ayarlar Butonu (Gizli Özellik)
+
                     Button(action: { showSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .foregroundColor(.white.opacity(0.6))
@@ -46,58 +45,51 @@ struct SignUpView: View {
                             .padding()
                     }
                 }
-                
+
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
-                        // Başlık ve İkon
                         Image(systemName: "person.badge.plus")
                             .resizable()
                             .scaledToFit()
                             .frame(width: 60, height: 60)
                             .foregroundColor(.white.opacity(0.8))
                             .padding(.top, 10)
-                        
+
                         Text("Bilgilerinizi Girin")
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
-                        
-                        // FORM ALANLARI
+
                         VStack(spacing: 15) {
                             groupLabel("Kişisel Bilgiler")
-                            
+
                             AuthTextField(placeholder: "Ad Soyad", iconName: "person", isSecure: false, text: $name)
-                            
+
                             AuthTextField(placeholder: "TC Kimlik Numarası", iconName: "person.text.rectangle", isSecure: false, text: $tcIdentityNumber)
                                 .keyboardType(.numberPad)
-                            
+
                             groupLabel("Tekne Bilgileri")
-                            
+
                             AuthTextField(placeholder: "Tekne Adı", iconName: "sailboat", isSecure: false, text: $boatName)
-                            
                             AuthTextField(placeholder: "Adres", iconName: "house", isSecure: false, text: $address)
-                            
+
                             groupLabel("Giriş Bilgileri")
-                            
+
                             AuthTextField(placeholder: "E-posta", iconName: "envelope", isSecure: false, text: $email)
-                            
                             AuthTextField(placeholder: "Şifre", iconName: "lock", isSecure: true, text: $password)
-                            
                             AuthTextField(placeholder: "Şifre Tekrar", iconName: "lock", isSecure: true, text: $confirmPassword)
                         }
                         .padding(.horizontal, 25)
-                        
-                        // Hata Mesajı
+
                         if let error = authViewModel.errorMessage {
                             Text(error)
                                 .foregroundColor(.red)
                                 .font(.caption)
                                 .padding(.top, 5)
                         }
-                        
-                        // KAYIT BUTONU
+
                         Button(action: signUp) {
-                            Text("Hesabı Oluştur")
+                            Text(authViewModel.isLoading ? "Kaydediliyor..." : "Hesabı Oluştur")
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
@@ -107,8 +99,8 @@ struct SignUpView: View {
                         }
                         .padding(.horizontal, 25)
                         .padding(.top, 20)
-                        .disabled(!isFormValid)
-                        
+                        .disabled(!isFormValid || authViewModel.isLoading)
+
                         Spacer(minLength: 50)
                     }
                 }
@@ -117,9 +109,13 @@ struct SignUpView: View {
         .sheet(isPresented: $showSettings) {
             settingsView
         }
+        .onChange(of: authViewModel.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated {
+                dismiss()
+            }
+        }
     }
-    
-    // MARK: - Settings View (Base URL Config)
+
     private var settingsView: some View {
         NavigationView {
             Form {
@@ -127,11 +123,11 @@ struct SignUpView: View {
                     Text("API Base URL Değiştir")
                         .font(.caption)
                         .foregroundColor(.gray)
-                    
+
                     TextField("https://api.example.com", text: $newBaseURL)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+
                     Button("Kaydet") {
                         if !newBaseURL.isEmpty {
                             ApiService.shared.updateBaseURL(newBaseURL)
@@ -140,7 +136,7 @@ struct SignUpView: View {
                     }
                     .disabled(newBaseURL.isEmpty)
                 }
-                
+
                 Section {
                     Button("Varsayılan Ayarlara Dön", role: .destructive) {
                         ApiService.shared.resetBaseURL()
@@ -156,8 +152,7 @@ struct SignUpView: View {
             }
         }
     }
-    
-    // Yardımcı Başlık Tasarımı
+
     private func groupLabel(_ text: String) -> some View {
         HStack {
             Text(text)
@@ -171,11 +166,16 @@ struct SignUpView: View {
     }
 
     private var isFormValid: Bool {
-        !name.isEmpty && !email.isEmpty && tcIdentityNumber.count == 11 &&
-        !boatName.isEmpty && !address.isEmpty && !password.isEmpty &&
-        password == confirmPassword && password.count >= 6
+        !name.isEmpty &&
+        !email.isEmpty &&
+        tcIdentityNumber.count == 11 &&
+        !boatName.isEmpty &&
+        !address.isEmpty &&
+        !password.isEmpty &&
+        password == confirmPassword &&
+        password.count >= 6
     }
-    
+
     private func signUp() {
         authViewModel.signUp(
             email: email,
@@ -185,8 +185,5 @@ struct SignUpView: View {
             adress: address,
             tcIdentityNumber: tcIdentityNumber
         )
-        if authViewModel.isAuthenticated {
-            dismiss()
-        }
     }
 }
